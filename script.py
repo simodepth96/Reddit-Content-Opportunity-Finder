@@ -1,4 +1,3 @@
-!pip install -q sentence-transformers hdbscan umap-learn scikit-learn openpyxl typesafe-sdk numpy plotly google-genai google-cloud-language
 import json
 import os
 import threading
