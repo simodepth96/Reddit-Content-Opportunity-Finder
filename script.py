@@ -709,8 +709,8 @@ st.caption("Clean scraped Reddit comments, cluster them by topic, and score the 
 
 with st.sidebar:
     st.header("Credentials")
-    st.caption("Keys live only in this browser session. They are never saved, written to the "
-               "server environment or stored in a file, and a page refresh clears them.")
+    st.caption("API Keys are never saved, a page refresh clears them"
+               )
     gemini_key = st.text_input("Gemini API key", type="password", key="gemini_key", autocomplete="off")
     typesafe_key = st.text_input("TypeSafe API key", type="password", key="typesafe_key", autocomplete="off")
     kg_key = st.text_input("Google Knowledge Graph API key", type="password", key="kg_key", autocomplete="off")
