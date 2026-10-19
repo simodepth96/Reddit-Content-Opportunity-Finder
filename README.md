@@ -2,6 +2,8 @@
 
 Finds content opportunities for a brand in scraped Reddit comments using Apify in a previous stage. The framework cleans the raw export, groups comments into topics using HDBSCAN clustering, scores each comment with Jev (TypeSafe), and flags comments where the brand could publish new content and no competitor is mentioned.
 
+You can now use the Streamlit app straight away: https://reddit-content-opportunity-finder.streamlit.app/
+
 ## How it works
 
 The pipeline has two stages. Keep them in **two separate scripts** (each has its own `main()`).
