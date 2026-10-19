@@ -39,10 +39,8 @@ NON_BRAND_ENTITY_TYPES = {"PERSON", "NUMBER", "DATE", "PRICE", "PHONE_NUMBER", "
 
 DEFAULT_JEV_INSTRUCTION = (
     "Is this comment from someone seeking advice, recommendations or information that "
-    "{brand} could answer with helpful content (e.g. choosing, comparing, planning or "
-    "booking a river cruise)?"
+    "{brand} could answer with helpful content?"
 )
-
 
 
 def strip_quoted_lines(text):
@@ -528,15 +526,15 @@ st.caption("Clean scraped Reddit comments, cluster them by topic, and score the 
 
 with st.sidebar:
     st.header("Brand")
-    target = st.text_input("Target brand", value="Brand")
+    target = st.text_input("Target brand")
     brand_context = st.text_area(
-        "One-line brand description (sent to Jev)",
-        value="Brand is a UK tour operator that sells river cruise holidays, including packages "
+        "Provide your brand's UVP, the market location and served product categories",
+        value="E.g; Brand is a UK tour operator that sells river cruise holidays, including packages "
               "with flights, transfers and excursions.", height=90)
-    topic = st.text_input("Comment topic (for cluster naming)", value="river cruises")
+    topic = st.text_input("Comment topic (for cluster naming)", value="E.g; river cruises")
     competitors_raw = st.text_area("Competitors (comma-separated)", height=70)
     extras_raw = st.text_area("Other terms to count, no entity check (e.g. destinations)", height=70)
-    question = st.text_area("Jev question ({brand} is substituted)", value=DEFAULT_JEV_INSTRUCTION, height=110)
+    question = st.text_area("Prompt Jev for Actions Classification)", value=DEFAULT_JEV_INSTRUCTION, height=110)
 
     st.header("Credentials")
     gemini_key = st.text_input("Gemini API key", type="password",
