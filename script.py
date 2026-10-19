@@ -162,7 +162,7 @@ def verify_brand_mentions(df, brands, nlp_client, progress=None):
     from google.cloud import language_v1
     rx = {b: re.compile(brand_regex(b), re.IGNORECASE) for b in brands}
     counts = pd.DataFrame(0, index=df.index, columns=brands, dtype=int)
-    audit = {b: {"comments_regex_hit": 0, "comments_verified": 0, "nlp_errors": 0} for b in brands}
+    audit = {b: {"count_comments": 0, "comments_verified": 0, "nlp_errors": 0} for b in brands}
 
     candidates = []
     for idx, body in df["body"].items():
@@ -171,7 +171,7 @@ def verify_brand_mentions(df, brands, nlp_client, progress=None):
         if hit_brands:
             candidates.append((idx, body, hits, hit_brands))
             for b in hit_brands:
-                audit[b]["comments_regex_hit"] += 1
+                audit[b]["count_comments"] += 1
 
     def check(item):
         idx, body, hits, hit_brands = item
@@ -417,7 +417,7 @@ def plot_heatmap(pivot, columns, hide_empty=True):
         hovertemplate="%{y}<br>%{x}: %{z} mentions<extra></extra>",
     ))
     fig.update_layout(
-        title="Brand, competitor and term mentions by cluster (brands entity-verified)",
+        title="Brand mentions by cluster",
         xaxis=dict(side="top"), height=max(450, 26 * len(data) + 160), margin=dict(l=300, t=110))
     return fig
 
