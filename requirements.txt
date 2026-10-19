@@ -1,0 +1,10 @@
+sentence-transformers
+hdbscan
+umap-learn
+scikit-learn
+openpyxl
+typesafe-sdk
+numpy
+plotly
+google-genai
+google-cloud-language
