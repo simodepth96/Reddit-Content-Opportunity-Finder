@@ -727,7 +727,7 @@ with st.sidebar:
     brand_context = st.text_area(
         "Provide your brand's UVP, the market location and served product categories",
         key="brand_context", height=120,
-        placeholder="E.g. Brand is a luxury fashion house that markets hand-made Italian vests, clothes and shoes for women ")
+        placeholder="[Brand] is a luxury fashion house specialising in handcrafted Italian vests, clothing and footwear for women.")
     topic = st.text_input("Comment topic (for cluster naming)", placeholder="E.g. river cruises")
     competitors_raw = st.text_area("Competitors (comma-separated)", height=70)
     extras_raw = st.text_area("Other terms to count, no entity check (e.g. destinations)", height=70)
