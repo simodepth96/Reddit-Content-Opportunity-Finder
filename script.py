@@ -736,7 +736,7 @@ with st.sidebar:
                              autocomplete="off",
                              help="Only needed to avoid Hugging Face rate limits when downloading the embedding model.")
     use_nlp = st.checkbox("Entity-verify brands (Google Natural Language)", value=True)
-    gcp_file = st.file_uploader("Service account JSON (optional, else default credentials)",
+    gcp_file = st.file_uploader("Service account JSON (mandatory, or entity verification won’t work here)",
                                 type="json", disabled=not use_nlp)
 
     st.header("Brand")
