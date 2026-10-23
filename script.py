@@ -36,9 +36,12 @@ PUNCT_MAP = str.maketrans({
     "\u2026": "...", "\u00a0": " ", "\u200b": "", "\u200d": "",
 })
 URL_RE = re.compile(r"https?://\S+|www\.\S+")
-NON_BRAND_ENTITY_TYPES = {"PERSON", "NUMBER", "DATE", "PRICE", "PHONE_NUMBER", "ADDRESS"}
+# PERSON removed: Google NLP often types a possessive brand ("Viking's Grand European Cruise")
+# as PERSON, which previously caused real brand mentions to be rejected.
+NON_BRAND_ENTITY_TYPES = {"NUMBER", "DATE", "PRICE", "PHONE_NUMBER", "ADDRESS"}
 KG_URL = "https://kgsearch.googleapis.com/v1/entities:search"
 TASKS = ["Cleaning", "Brand verification", "Embedding", "Clustering", "Cluster naming", "Jev scoring"]
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 DEFAULT_JEV_INSTRUCTION = (
     "Is this comment from someone seeking advice, recommendations or information that "
@@ -214,6 +217,11 @@ def make_nlp_client(creds_json):
     return language_v1.LanguageServiceClient()  # Application Default Credentials
 
 
+def _norm_entity(text):
+    """Lower-case and strip a trailing possessive so "Viking's" matches "Viking"."""
+    return re.sub(r"['\u2019]s?$", "", str(text).lower().strip())
+
+
 def verify_brand_mentions(df, brands, nlp_client, on_progress=None):
     """Return (counts DataFrame aligned to df.index, audit DataFrame)."""
     from google.cloud import language_v1
@@ -235,20 +243,29 @@ def verify_brand_mentions(df, brands, nlp_client, on_progress=None):
         if nlp_client is None:
             return idx, hits, set(hit_brands), set()
         try:
-            resp = nlp_client.analyze_entities(request={
-                "document": {"content": body[:5000], "type_": language_v1.Document.Type.PLAIN_TEXT},
-                "encoding_type": language_v1.EncodingType.UTF8,
-            })
-            ents = [(e.name.lower(), language_v1.Entity.Type(e.type_).name) for e in resp.entities]
+            resp = nlp_client.analyze_entities(
+                request={
+                    "document": {"content": body[:5000], "type_": language_v1.Document.Type.PLAIN_TEXT},
+                    "encoding_type": language_v1.EncodingType.UTF8,
+                },
+                timeout=30,
+            )
+            # Each entity contributes its canonical name plus every surface form it was mentioned as.
+            ents = []
+            for e in resp.entities:
+                if language_v1.Entity.Type(e.type_).name in NON_BRAND_ENTITY_TYPES:
+                    continue
+                forms = {_norm_entity(e.name)}
+                forms.update(_norm_entity(m.text.content) for m in e.mentions)
+                ents.append(forms)
             verified = set()
             for b in hit_brands:
                 bl = b.lower()
-                for name, etype in ents:
-                    if etype in NON_BRAND_ENTITY_TYPES:
-                        continue
-                    if name == bl or bl in name or (len(name) > 2 and name in bl):
-                        verified.add(b)
-                        break
+                if any(
+                    name == bl or bl in name or (len(name) > 2 and name in bl)
+                    for forms in ents for name in forms
+                ):
+                    verified.add(b)
             return idx, hits, verified, set()
         except Exception:
             return idx, hits, set(hit_brands), set(hit_brands)  # fall back to regex, log error
@@ -275,13 +292,14 @@ def verify_brand_mentions(df, brands, nlp_client, on_progress=None):
 # Embeddings, clustering, naming
 # ----------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
-def load_embedder(name):
+def load_embedder(name, _hf_token=None):
+    """_hf_token is underscore-prefixed so Streamlit does not hash it into the cache key."""
     from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(name)
+    return SentenceTransformer(name, token=_hf_token) if _hf_token else SentenceTransformer(name)
 
 
-def embed(texts, model_name, on_progress=None):
-    model = load_embedder(model_name)
+def embed(texts, model_name, hf_token=None, on_progress=None):
+    model = load_embedder(model_name, hf_token)
     chunk, parts = 256, []
     for i in range(0, len(texts), chunk):
         parts.append(model.encode(texts[i:i + chunk], batch_size=32, show_progress_bar=False,
@@ -551,7 +569,7 @@ def fill_brand_context():
         text, note = draft_from_facts(facts), ""
         if gem_key:
             try:
-                text = synthesise_brand_context(facts, gem_key, s.get("gemini_model", "gemini-2.5-flash")) or text
+                text = synthesise_brand_context(facts, gem_key, s.get("gemini_model", DEFAULT_GEMINI_MODEL)) or text
             except Exception as ex:
                 note = f" Gemini rewrite failed ({redact(ex, secrets)}); used the raw description."
         if not text:
@@ -600,7 +618,7 @@ def plot_heatmap(pivot, columns, hide_empty=True):
 def run_pipeline(raw, cfg, p, ui):
     warnings = []
     bars = ui["bars"]
-    secrets = [cfg["gemini_key"], cfg["typesafe_key"], cfg["kg_key"]]
+    secrets = [cfg["gemini_key"], cfg["typesafe_key"], cfg["kg_key"], p["hf_token"]]
     brands = [cfg["target"]] + cfg["competitors"]
 
     # 1. Cleaning + score filter, then show the cleaning table straight away
@@ -632,7 +650,7 @@ def run_pipeline(raw, cfg, p, ui):
 
     # 3. Embedding
     bars.set("Embedding", 0.0, "loading model")
-    emb = embed(df["body"].tolist(), p["embedding_model"],
+    emb = embed(df["body"].tolist(), p["embedding_model"], p["hf_token"],
                 lambda f: bars.set("Embedding", f, f"{f:.0%}"))
     bars.set("Embedding", 1.0, "done")
 
@@ -714,6 +732,9 @@ with st.sidebar:
     gemini_key = st.text_input("Gemini API key", type="password", key="gemini_key", autocomplete="off")
     typesafe_key = st.text_input("TypeSafe API key", type="password", key="typesafe_key", autocomplete="off")
     kg_key = st.text_input("Google Knowledge Graph API key", type="password", key="kg_key", autocomplete="off")
+    hf_token = st.text_input("Hugging Face token (optional)", type="password", key="hf_token",
+                             autocomplete="off",
+                             help="Only needed to avoid Hugging Face rate limits when downloading the embedding model.")
     use_nlp = st.checkbox("Entity-verify brands (Google Natural Language)", value=True)
     gcp_file = st.file_uploader("Service account JSON (optional, else default credentials)",
                                 type="json", disabled=not use_nlp)
@@ -744,7 +765,7 @@ with st.sidebar:
         umap_neighbors = st.number_input("UMAP neighbours", value=15, min_value=2)
         umap_components = st.number_input("UMAP components", value=5, min_value=2)
         embedding_model = st.text_input("Embedding model", value="sentence-transformers/all-MiniLM-L6-v2")
-        gemini_model = st.text_input("Gemini model", value="gemini-2.5-flash", key="gemini_model")
+        gemini_model = st.text_input("Gemini model", value=DEFAULT_GEMINI_MODEL, key="gemini_model")
         jev_model = st.text_input("Jev model", value="jev-1.13.0")
         jev_workers = st.number_input("Jev workers", value=8, min_value=1, max_value=32)
         n_examples = st.number_input("Example comments per cluster", value=8, min_value=1)
@@ -762,7 +783,7 @@ with tab_res:
     prog_slot = st.empty()
 
 if run_clicked and uploaded:
-    secrets = [gemini_key, typesafe_key, kg_key]
+    secrets = [gemini_key, typesafe_key, kg_key, hf_token]
     try:
         raw = pd.read_csv(uploaded) if uploaded.name.endswith(".csv") else pd.read_excel(uploaded)
         if not target.strip():
@@ -776,7 +797,8 @@ if run_clicked and uploaded:
         params = dict(min_score=min_score, opp_threshold=opp_threshold, hide_empty=hide_empty,
                       min_cluster_size=int(min_cluster_size), min_samples=int(min_samples),
                       umap_neighbors=int(umap_neighbors), umap_components=int(umap_components),
-                      embedding_model=embedding_model, gemini_model=gemini_model,
+                      embedding_model=embedding_model, hf_token=hf_token.strip() or None,
+                      gemini_model=gemini_model,
                       jev_model=jev_model, jev_workers=int(jev_workers),
                       topic=topic.strip() or "travel",
                       n_examples=int(n_examples), max_comment_chars=int(max_comment_chars))
